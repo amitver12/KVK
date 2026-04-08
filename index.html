@@ -1,13 +1,244 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>My Google AI Studio App</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
-</html>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Image Classifier</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, Helvetica, sans-serif;
+      background: linear-gradient(135deg, #eef2ff, #f8fafc);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #1f2937;
+    }
+    .container {
+      width: 100%;
+      max-width: 480px;
+      background: #ffffff;
+      border-radius: 20px;
+      padding: 28px;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.12);
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: 28px;
+      text-align: center;
+    }
+    p.subtitle {
+      margin: 0 0 24px;
+      text-align: center;
+      color: #6b7280;
+      font-size: 15px;
+      line-height: 1.5;
+    }
+    .upload-box {
+      border: 2px dashed #c7d2fe;
+      background: #f8fafc;
+      border-radius: 16px;
+      padding: 20px;
+      text-align: center;
+      transition: 0.2s ease;
+      cursor: pointer;
+    }
+    .upload-box:hover {
+      border-color: #818cf8;
+      background: #eef2ff;
+    }
+    input[type="file"] { display: none; }
+    .preview-wrapper {
+      margin-top: 20px;
+      display: none;
+      text-align: center;
+    }
+    .preview-wrapper img {
+      max-width: 100%;
+      max-height: 260px;
+      border-radius: 14px;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.10);
+    }
+    .button {
+      width: 100%;
+      margin-top: 20px;
+      border: none;
+      background: #4f46e5;
+      color: white;
+      padding: 14px 18px;
+      border-radius: 12px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: 0.2s ease;
+    }
+    .button:hover { background: #4338ca; }
+    .button:disabled {
+      background: #a5b4fc;
+      cursor: not-allowed;
+    }
+    .result, .error {
+      margin-top: 20px;
+      padding: 16px;
+      border-radius: 12px;
+      display: none;
+    }
+    .result {
+      background: #ecfdf5;
+      border: 1px solid #a7f3d0;
+      color: #065f46;
+    }
+    .error {
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      color: #991b1b;
+    }
+    .field {
+      margin-top: 18px;
+    }
+    .field label {
+      display: block;
+      font-size: 14px;
+      margin-bottom: 8px;
+      color: #374151;
+      font-weight: 600;
+    }
+    .field input[type="text"] {
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid #d1d5db;
+      font-size: 14px;
+      outline: none;
+    }
+    .field input[type="text"]:focus {
+      border-color: #6366f1;
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
+    }
+    .small-text {
+      margin-top: 8px;
+      font-size: 12px;
+      color: #6b7280;
+    }
+    .loading {
+      display: none;
+      margin-top: 14px;
+      text-align: center;
+      color: #4b5563;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Image Classifier</h1>
+    <p class="subtitle">Upload an image, send it to your backend API, and get the predicted label.</p>
 
+    <div class="field">
+      <label for="apiUrl">Backend API URL</label>
+      <input type="text" id="apiUrl" value="https://mnit-h14p.onrender.com/predict/" />
+      <div class="small-text">Change this if your FastAPI endpoint is hosted somewhere else.</div>
+    </div>
+
+    <label class="upload-box" for="imageInput">
+      <strong>Click to choose an image</strong>
+      <div class="small-text">PNG, JPG, JPEG supported</div>
+    </label>
+    <input type="file" id="imageInput" accept="image/*" />
+
+    <div class="preview-wrapper" id="previewWrapper">
+      <img id="previewImage" alt="Preview" />
+    </div>
+
+    <button class="button" id="predictBtn" disabled>Classify Image</button>
+    <div class="loading" id="loadingText">Uploading image and getting prediction...</div>
+
+    <div class="result" id="resultBox"></div>
+    <div class="error" id="errorBox"></div>
+  </div>
+
+  <script>
+    const imageInput = document.getElementById("imageInput");
+    const previewWrapper = document.getElementById("previewWrapper");
+    const previewImage = document.getElementById("previewImage");
+    const predictBtn = document.getElementById("predictBtn");
+    const resultBox = document.getElementById("resultBox");
+    const errorBox = document.getElementById("errorBox");
+    const loadingText = document.getElementById("loadingText");
+    const apiUrlInput = document.getElementById("apiUrl");
+
+    let selectedFile = null;
+
+    imageInput.addEventListener("change", function () {
+      const file = this.files[0];
+      resultBox.style.display = "none";
+      errorBox.style.display = "none";
+
+      if (!file) {
+        selectedFile = null;
+        previewWrapper.style.display = "none";
+        predictBtn.disabled = true;
+        return;
+      }
+
+      selectedFile = file;
+      predictBtn.disabled = false;
+
+      const reader = new FileReader();
+      reader.onload = function (e) {
+        previewImage.src = e.target.result;
+        previewWrapper.style.display = "block";
+      };
+      reader.readAsDataURL(file);
+    });
+
+    predictBtn.addEventListener("click", async function () {
+      if (!selectedFile) return;
+
+      const apiUrl = apiUrlInput.value.trim();
+      if (!apiUrl) {
+        errorBox.textContent = "Please enter your backend API URL.";
+        errorBox.style.display = "block";
+        return;
+      }
+
+      resultBox.style.display = "none";
+      errorBox.style.display = "none";
+      loadingText.style.display = "block";
+      predictBtn.disabled = true;
+
+      const formData = new FormData();
+      formData.append("file", selectedFile);
+
+      try {
+        const response = await fetch(apiUrl, {
+          method: "POST",
+          body: formData
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || "Something went wrong while calling the API.");
+        }
+
+        let html = `<strong>Prediction:</strong> ${data.prediction}`;
+        if (data.confidence !== undefined) {
+          html += `<br><strong>Confidence:</strong> ${(Number(data.confidence) * 100).toFixed(2)}%`;
+        }
+
+        resultBox.innerHTML = html;
+        resultBox.style.display = "block";
+      } catch (error) {
+        errorBox.textContent = error.message;
+        errorBox.style.display = "block";
+      } finally {
+        loadingText.style.display = "none";
+        predictBtn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
